@@ -8,6 +8,7 @@ import { UserCheck, Star, Clock, Shield, AlertTriangle, FileText, CheckCircle2, 
 import { fetchProVerifications, verifyProfessional, updateProCoverageRadius } from '@/lib/api';
 
 export default function ProfessionalsPage() {
+  
   const router = useRouter();
   const [authenticated, setAuthenticated] = useState(false);
   const [pros, setPros] = useState<any[]>([]);
