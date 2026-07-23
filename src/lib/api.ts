@@ -24,10 +24,6 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
   return data.data || data;
 }
 
-// -------------------------------------------------------------
-// Real API Endpoint Handlers connected to Microservices Gateway
-// -------------------------------------------------------------
-
 // Auth APIs
 export async function sendAdminOtp(phoneNumber: string) {
   return fetchApi<{ success: boolean; message: string; debugOtp?: string }>('/api/v1/auth/otp/send', {
@@ -63,18 +59,41 @@ export async function resolveSosAlert(sosId: string) {
   });
 }
 
+// Professional Verification & Radius Management APIs
+export async function fetchProVerifications() {
+  try {
+    return await fetchApi<any[]>('/api/v1/admin/pro/verifications');
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function verifyProfessional(userId: string, status: 'APPROVED' | 'SUSPENDED' | 'REJECTED' | 'PENDING', notes?: string) {
+  return fetchApi(`/api/v1/admin/pro/${userId}/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ status, notes }),
+  });
+}
+
+export async function updateProCoverageRadius(userId: string, coverageRadiusKm: number, assignedRegion?: string) {
+  return fetchApi(`/api/v1/admin/pro/${userId}/coverage`, {
+    method: 'PUT',
+    body: JSON.stringify({ coverageRadiusKm, assignedRegion }),
+  });
+}
+
 // System Settings APIs
 export async function fetchSystemSettings(): Promise<SystemSetting[]> {
   try {
-    return await fetchApi<SystemSetting[]>('/api/v1/safety/settings');
+    return await fetchApi<SystemSetting[]>('/api/v1/admin/settings');
   } catch (err) {
     return [];
   }
 }
 
 export async function updateSystemSetting(setting_key: string, setting_value: string, description?: string) {
-  return fetchApi('/api/v1/admin/settings', {
-    method: 'POST',
-    body: JSON.stringify({ setting_key, setting_value, description }),
+  return fetchApi(`/api/v1/admin/settings/${setting_key}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value: setting_value, description }),
   });
 }

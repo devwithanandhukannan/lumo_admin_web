@@ -23,18 +23,30 @@ export default function SafetyControlCenterPage() {
   const [loading, setLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  const loadAlerts = async () => {
+    try {
+      const data = await fetchSosAlerts();
+      setSosAlerts(data);
+    } catch (_) {
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('lumo_admin_token');
     if (!token) { router.push('/login'); return; }
     setAuthenticated(true);
-    fetchSosAlerts()
-      .then(data => { setSosAlerts(data); setLoading(false); })
-      .catch(() => setLoading(false));
+    loadAlerts();
   }, [router]);
 
   const handleResolve = async (id: string) => {
-    try { await resolveSosAlert(id); } catch {}
-    setSosAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'RESOLVED' } : a));
+    try {
+      await resolveSosAlert(id);
+      setSosAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'RESOLVED' } : a));
+    } catch (err: any) {
+      alert(err.message || 'Failed to mark alert resolved');
+    }
   };
 
   if (!authenticated) return (
