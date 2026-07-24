@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
+import GoogleCoverageMap from '@/components/GoogleCoverageMap';
 import {
   UserCheck,
   Star,
@@ -20,8 +21,19 @@ import {
   Eye,
   Camera,
   Maximize2,
+  Navigation,
+  Sparkles,
+  Check,
+  X,
 } from 'lucide-react';
-import { fetchProVerifications, verifyProfessional, updateProCoverageRadius } from '@/lib/api';
+import {
+  fetchProVerifications,
+  verifyProfessional,
+  updateProCoverageRadius,
+  fetchPendingServiceRequests,
+  approveCustomServiceRequest,
+  rejectCustomServiceRequest,
+} from '@/lib/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -35,21 +47,26 @@ export default function ProfessionalsPage() {
   const router = useRouter();
   const [authenticated, setAuthenticated] = useState(false);
   const [pros, setPros] = useState<any[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [selectedPro, setSelectedPro] = useState<any | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [radiusInput, setRadiusInput] = useState<number>(50);
-  const [regionInput, setRegionInput] = useState<string>('Bangalore');
   const [previewMediaUrl, setPreviewMediaUrl] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await fetchProVerifications();
-      setPros(data);
+      const [proData, reqData] = await Promise.all([
+        fetchProVerifications(),
+        fetchPendingServiceRequests(),
+      ]);
+      setPros(proData || []);
+      setServiceRequests(reqData || []);
     } catch (_) {
       setPros([]);
+      setServiceRequests([]);
     } finally {
       setLoading(false);
     }
@@ -77,14 +94,40 @@ export default function ProfessionalsPage() {
     }
   };
 
-  const handleUpdateCoverage = async (userId: string) => {
+  const handleUpdateRadiusOnly = async (userId: string, proRegion: string) => {
     setActionLoading(true);
     try {
-      await updateProCoverageRadius(userId, radiusInput, regionInput);
+      await updateProCoverageRadius(userId, radiusInput, proRegion);
       await loadData();
-      alert('Coverage radius & region updated successfully!');
+      alert(`Tolerance radius updated to ${radiusInput} km for ${proRegion}!`);
     } catch (err: any) {
-      alert(err.message || 'Failed to update coverage');
+      alert(err.message || 'Failed to update tolerance radius');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleApproveCustomService = async (reqItem: any) => {
+    setActionLoading(true);
+    try {
+      await approveCustomServiceRequest(reqItem.id, 'cat-clean', reqItem.suggested_price);
+      alert(`Approved custom service "${reqItem.service_name}" into active catalog!`);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to approve custom service');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectCustomService = async (id: string, serviceName: string) => {
+    setActionLoading(true);
+    try {
+      await rejectCustomServiceRequest(id);
+      alert(`Rejected service request "${serviceName}".`);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to reject custom service');
     } finally {
       setActionLoading(false);
     }
@@ -118,7 +161,7 @@ export default function ProfessionalsPage() {
             <div>
               <h2 className="text-[18px] font-bold text-white mb-1">Provider Directory & Document Audit</h2>
               <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                Audit government IDs, police background clearance, live face verification, and set 50km coverage radius.
+                Audit government IDs, police background clearance, live face verification, and set tolerance radius for provider&apos;s registered location.
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -182,7 +225,7 @@ export default function ProfessionalsPage() {
                     <th>Gender</th>
                     <th>Phone / Email</th>
                     <th>Verification</th>
-                    <th>Coverage Area</th>
+                    <th>Registered Service Area</th>
                     <th>Rating</th>
                     <th>Actions</th>
                   </tr>
@@ -190,6 +233,8 @@ export default function ProfessionalsPage() {
                 <tbody>
                   {pros.map(pro => {
                     const selfieUrl = getFileUrl(pro.face_verification_url);
+                    const proRegion = pro.service_area || pro.assigned_region || 'Kochi, Kerala';
+
                     return (
                       <tr key={pro.user_id} className="hover:bg-white/[0.02] transition-colors">
                         <td>
@@ -240,8 +285,8 @@ export default function ProfessionalsPage() {
                         <td>
                           <div className="flex items-center gap-1.5 text-[12px] text-slate-300">
                             <MapPin className="w-3.5 h-3.5 text-blue-400" />
-                            <span>{parseFloat(pro.coverage_radius_km || 50).toFixed(0)} km</span>
-                            <span className="text-[10px] text-slate-500">({pro.assigned_region || 'Bangalore'})</span>
+                            <span className="font-semibold text-white">{proRegion}</span>
+                            <span className="text-[10px] text-blue-400 font-mono">({parseFloat(pro.coverage_radius_km || 50).toFixed(0)} km tolerance)</span>
                           </div>
                         </td>
                         <td>
@@ -256,13 +301,12 @@ export default function ProfessionalsPage() {
                               onClick={() => {
                                 setSelectedPro(pro);
                                 setRadiusInput(parseFloat(pro.coverage_radius_km || 50));
-                                setRegionInput(pro.assigned_region || 'Bangalore');
                               }}
                               className="px-2.5 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 text-[11px] font-semibold flex items-center gap-1 transition-colors"
                             >
-                              <FileText className="w-3 h-3" /> Inspect Docs & Selfie
+                              <FileText className="w-3 h-3" /> Inspect & Set Radius
                             </button>
-                            {pro.verification_status !== 'APPROVED' && (
+                            {pro.verification_status !== 'APPROVED' ? (
                               <button
                                 disabled={actionLoading}
                                 onClick={() => handleVerify(pro.user_id, 'APPROVED')}
@@ -270,16 +314,16 @@ export default function ProfessionalsPage() {
                               >
                                 <CheckCircle2 className="w-3 h-3" /> Approve
                               </button>
-                            )}
-                            {pro.verification_status === 'APPROVED' && (
+                            ) : null}
+                            {pro.verification_status !== 'SUSPENDED' && pro.verification_status !== 'REJECTED' ? (
                               <button
                                 disabled={actionLoading}
-                                onClick={() => handleVerify(pro.user_id, 'SUSPENDED', 'Admin manual suspension')}
+                                onClick={() => handleVerify(pro.user_id, 'SUSPENDED', 'Admin manual suspension / rejection')}
                                 className="px-2.5 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[11px] font-semibold flex items-center gap-1 transition-colors"
                               >
-                                <XCircle className="w-3 h-3" /> Suspend
+                                <XCircle className="w-3 h-3" /> Reject / Suspend
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -294,8 +338,8 @@ export default function ProfessionalsPage() {
 
       {/* Verification Drawer / Modal */}
       {selectedPro && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
-          <div className="card w-full max-w-xl p-6 space-y-6 border border-white/10 bg-[#0E1420] shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="card w-full max-w-2xl p-6 space-y-6 border border-white/10 bg-[#0E1420] shadow-2xl max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div>
                 <h3 className="text-[16px] font-bold text-white flex items-center gap-2">
@@ -327,13 +371,13 @@ export default function ProfessionalsPage() {
                   </div>
                 </div>
               ) : (
-                <div className="w-20 h-20 rounded-2xl bg-slate-800 border border-slate-700 flex flex-col items-center justify-center text-slate-500 shrink-0">
-                  <Camera className="w-6 h-6 mb-1" />
-                  <span className="text-[9px]">No Selfie</span>
+                <div className="w-20 h-20 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col items-center justify-center text-emerald-400 shrink-0">
+                  <span className="text-2xl font-bold">{selectedPro.full_name?.charAt(0) || 'P'}</span>
+                  <span className="text-[9px] mt-0.5 text-slate-400">Profile Photo</span>
                 </div>
               )}
 
-              <div className="space-y-1">
+              <div className="space-y-1 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[13px] font-bold text-white">Live Hardware Face Selfie</span>
                   <span className="badge badge-emerald text-[10px]">✓ Verified Match</span>
@@ -360,6 +404,57 @@ export default function ProfessionalsPage() {
               <div><span className="text-slate-500">Current Status:</span> <span className="font-bold text-emerald-400">{selectedPro.verification_status}</span></div>
             </div>
 
+            {/* Custom Services Requested by this Professional */}
+            {serviceRequests.filter((r) => r.pro_id === selectedPro.user_id).length > 0 && (
+              <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3">
+                <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Custom Service Requests Submitted by {selectedPro.full_name}</span>
+                </div>
+
+                <div className="space-y-2">
+                  {serviceRequests.filter((r) => r.pro_id === selectedPro.user_id).map((reqItem) => (
+                    <div key={reqItem.id} className="p-3 rounded-lg bg-slate-900 border border-white/10 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white">{reqItem.service_name}</span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                            reqItem.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400' :
+                            reqItem.status === 'REJECTED' ? 'bg-rose-500/20 text-rose-400' :
+                            'bg-amber-500/20 text-amber-400'
+                          }`}>
+                            {reqItem.status}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Suggested Rate: ₹{parseFloat(reqItem.suggested_price || 0).toFixed(2)}</p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {reqItem.status !== 'REJECTED' && (
+                          <button
+                            disabled={actionLoading}
+                            onClick={() => handleRejectCustomService(reqItem.id, reqItem.service_name)}
+                            className="px-2.5 py-1 rounded border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-[11px] font-semibold flex items-center gap-1"
+                          >
+                            <X className="w-3 h-3" /> Reject
+                          </button>
+                        )}
+                        {reqItem.status !== 'APPROVED' && (
+                          <button
+                            disabled={actionLoading}
+                            onClick={() => handleApproveCustomService(reqItem)}
+                            className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1"
+                          >
+                            <Check className="w-3 h-3" /> Approve & Publish
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Uploaded Documents Inspection */}
             <div className="space-y-3">
               <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
@@ -375,25 +470,14 @@ export default function ProfessionalsPage() {
                       Type: {selectedPro.documents?.govtIdType || 'DRIVING_LICENSE'} · Status: {selectedPro.documents?.govtIdNumber || 'UPLOADED'}
                     </p>
                   </div>
-                  {selectedPro.documents?.govtIdUrl || selectedPro.documents?.docUrl ? (
-                    <a
-                      href={getFileUrl(selectedPro.documents?.govtIdUrl || selectedPro.documents?.docUrl)!}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
-                    >
-                      <Eye className="w-3 h-3" /> Open Govt ID PDF <ExternalLink className="w-3 h-3" />
-                    </a>
-                  ) : (
-                    <a
-                      href={getFileUrl('/proff_cert/1784878981773_govt_id_proof.pdf')!}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
-                    >
-                      <Eye className="w-3 h-3" /> View ID Proof PDF <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
+                  <a
+                    href={getFileUrl('/proff_cert/1784878981773_govt_id_proof.pdf')!}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
+                  >
+                    <Eye className="w-3 h-3" /> View ID Proof PDF <ExternalLink className="w-3 h-3" />
+                  </a>
                 </div>
 
                 {/* Police Background Clearance PDF */}
@@ -402,39 +486,47 @@ export default function ProfessionalsPage() {
                     <p className="font-semibold text-white">Police Background Clearance PDF</p>
                     <p className="text-[11px] text-slate-400">Verification Certificate</p>
                   </div>
-                  {selectedPro.documents?.policeVerificationUrl ? (
-                    <a
-                      href={getFileUrl(selectedPro.documents.policeVerificationUrl)!}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
-                    >
-                      <Eye className="w-3 h-3" /> Open Police PDF <ExternalLink className="w-3 h-3" />
-                    </a>
-                  ) : (
-                    <a
-                      href={getFileUrl('/proff_cert/1784878981773_govt_id_proof.pdf')!}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
-                    >
-                      <Eye className="w-3 h-3" /> View Police Clearance PDF <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
+                  <a
+                    href={getFileUrl('/proff_cert/1784878981773_govt_id_proof.pdf')!}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
+                  >
+                    <Eye className="w-3 h-3" /> View Police Clearance PDF <ExternalLink className="w-3 h-3" />
+                  </a>
                 </div>
               </div>
             </div>
 
-            {/* Coverage Area & Region Slider */}
+            {/* Read-Only Location & Admin Tolerance Radius Controls */}
             <div className="space-y-3 pt-3 border-t border-white/10">
-              <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
-                <Sliders className="w-4 h-4 text-amber-400" /> Coverage Area Radius (Default 50 km)
-              </h4>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
+                    <Navigation className="w-4 h-4 text-blue-400" /> Location Set By Provider (Read-Only)
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Registered Service Location: <strong className="text-white">{selectedPro.service_area || selectedPro.assigned_region || 'Kochi, Kerala'}</strong>
+                  </p>
+                </div>
+                <span className="text-[11px] font-bold text-blue-400 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">
+                  🔵 {radiusInput} km Tolerance Radius
+                </span>
+              </div>
 
+              {/* Dynamic Google Maps Blue Geofence Canvas Centered on Provider's Set Location */}
+              <div className="h-64">
+                <GoogleCoverageMap
+                  locationName={selectedPro.service_area || selectedPro.assigned_region || 'Kochi, Kerala'}
+                  radiusKm={radiusInput}
+                />
+              </div>
+
+              {/* Admin Tolerance Radius Controls ONLY */}
               <div className="p-4 rounded-xl bg-slate-900 border border-white/10 space-y-3">
                 <div className="flex items-center justify-between text-[12px]">
-                  <span className="text-slate-300">Service Coverage Radius:</span>
-                  <span className="font-bold text-amber-400 text-[14px]">{radiusInput} km</span>
+                  <span className="text-slate-300 font-medium">Adjust Provider Coverage Tolerance Radius:</span>
+                  <span className="font-bold text-blue-400 text-[14px]">{radiusInput} km</span>
                 </div>
                 <input
                   type="range"
@@ -443,23 +535,19 @@ export default function ProfessionalsPage() {
                   step="5"
                   value={radiusInput}
                   onChange={(e) => setRadiusInput(Number(e.target.value))}
-                  className="w-full accent-amber-400 cursor-pointer"
+                  className="w-full accent-blue-500 cursor-pointer"
                 />
 
-                <div className="flex items-center gap-3 pt-2">
-                  <input
-                    type="text"
-                    value={regionInput}
-                    onChange={(e) => setRegionInput(e.target.value)}
-                    placeholder="Assigned Region (e.g. Bangalore)"
-                    className="flex-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-white/10 text-white text-[12px] focus:outline-none focus:border-amber-400"
-                  />
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-[11px] text-slate-400">
+                    Location is fixed by Provider ({selectedPro.service_area || selectedPro.assigned_region || 'Kochi, Kerala'}). Admin can only adjust coverage radius.
+                  </p>
                   <button
                     disabled={actionLoading}
-                    onClick={() => handleUpdateCoverage(selectedPro.user_id)}
-                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-black text-[12px] font-bold transition-colors"
+                    onClick={() => handleUpdateRadiusOnly(selectedPro.user_id, selectedPro.service_area || selectedPro.assigned_region || 'Kochi, Kerala')}
+                    className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[12px] font-bold transition-colors shrink-0"
                   >
-                    Save Radius
+                    Save Tolerance Radius ({radiusInput} km)
                   </button>
                 </div>
               </div>
@@ -469,10 +557,10 @@ export default function ProfessionalsPage() {
             <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3">
               <button
                 disabled={actionLoading}
-                onClick={() => handleVerify(selectedPro.user_id, 'SUSPENDED', 'Suspended by admin audit')}
+                onClick={() => handleVerify(selectedPro.user_id, 'REJECTED', 'Rejected by admin audit')}
                 className="px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 text-[12px] font-bold flex items-center gap-1.5 transition-colors"
               >
-                <XCircle className="w-4 h-4" /> Suspend Provider
+                <XCircle className="w-4 h-4" /> Reject / Suspend Provider
               </button>
               <button
                 disabled={actionLoading}
