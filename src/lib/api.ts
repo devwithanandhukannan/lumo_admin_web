@@ -82,6 +82,42 @@ export async function updateProCoverageRadius(userId: string, coverageRadiusKm: 
   });
 }
 
+// Catalog Service & Service Creation APIs
+export async function fetchServiceCategories() {
+  try {
+    return await fetchApi<any[]>('/api/v1/catalog/categories');
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function fetchServiceCatalog() {
+  try {
+    return await fetchApi<any[]>('/api/v1/catalog/services');
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function createServiceCatalogItem(data: {
+  name: string;
+  categoryId: string;
+  basePrice: number;
+  durationMinutes?: number;
+  description?: string;
+}) {
+  return fetchApi('/api/v1/catalog/services', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteServiceCatalogItem(id: string) {
+  return fetchApi(`/api/v1/catalog/services/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 // System Settings APIs
 export async function fetchSystemSettings(): Promise<SystemSetting[]> {
   try {

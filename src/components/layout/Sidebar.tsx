@@ -10,6 +10,7 @@ import {
   CalendarCheck, 
   Settings, 
   LogOut, 
+  Layers,
   Zap,
   PanelLeftClose,
   PanelLeftOpen,
@@ -20,6 +21,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, short: 'Dash' },
   { name: 'Safety Control', href: '/safety-control-center', icon: ShieldAlert, badge: 'LIVE', short: 'SCC' },
   { name: 'Professional Vault', href: '/professionals', icon: UserCheck, short: 'Pros' },
+  { name: 'Service Catalog', href: '/services', icon: Layers, short: 'Svc' },
   { name: 'Booking Ops', href: '/bookings', icon: CalendarCheck, short: 'Jobs' },
   { name: 'Settings', href: '/settings', icon: Settings, short: 'Cfg' },
 ];
