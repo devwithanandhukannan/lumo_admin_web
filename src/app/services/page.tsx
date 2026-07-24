@@ -18,6 +18,7 @@ import {
   Check,
   X,
   User,
+  Filter,
 } from 'lucide-react';
 import {
   fetchServiceCatalog,
@@ -35,6 +36,7 @@ export default function ServicesCatalogPage() {
   const [services, setServices] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [requestFilter, setRequestFilter] = useState<'ALL' | 'PENDING' | 'REJECTED' | 'APPROVED'>('ALL');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -130,7 +132,7 @@ export default function ServicesCatalogPage() {
     setActionLoading(true);
     try {
       await rejectCustomServiceRequest(id);
-      setMessage({ type: 'success', text: `Request "${serviceName}" rejected.` });
+      setMessage({ type: 'success', text: `Service request "${serviceName}" rejected.` });
       await loadData();
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to reject request' });
@@ -158,7 +160,12 @@ export default function ServicesCatalogPage() {
     s.category_name?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const activePendingReqs = pendingRequests.filter((r) => r.status === 'PENDING_ADMIN_APPROVAL');
+  const filteredRequests = pendingRequests.filter((r) => {
+    if (requestFilter === 'PENDING') return r.status === 'PENDING_ADMIN_APPROVAL';
+    if (requestFilter === 'APPROVED') return r.status === 'APPROVED';
+    if (requestFilter === 'REJECTED') return r.status === 'REJECTED';
+    return true;
+  });
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
@@ -175,7 +182,7 @@ export default function ServicesCatalogPage() {
                 <h1 className="text-xl font-bold text-white tracking-tight">Services & Pricing Catalog</h1>
               </div>
               <p className="text-xs text-gray-400">
-                Add, manage, and price services offered on LUMO. Created services instantly sync to the professional service selection panel in the app.
+                Add, manage, approve, and price services requested or offered on LUMO.
               </p>
             </div>
 
@@ -203,61 +210,99 @@ export default function ServicesCatalogPage() {
             </div>
           )}
 
-          {/* Professional Custom Service Requests Section */}
-          {activePendingReqs.length > 0 && (
-            <div className="p-5 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
-                  <Sparkles className="w-4 h-4 animate-pulse" />
-                  <span>Pending Custom Service Requests from Professionals ({activePendingReqs.length})</span>
-                </div>
-                <span className="text-xs text-amber-400/80">Approve to publish directly into service catalog</span>
+          {/* Professional Custom Service Requests Audit Section */}
+          <div className="p-5 rounded-2xl border border-gray-800 bg-gray-900/40 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
+                <h3 className="text-base font-bold text-white">Professional Custom Service Requests ({pendingRequests.length})</h3>
               </div>
 
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1 bg-gray-950 p-1 rounded-xl border border-gray-800 text-xs font-semibold">
+                {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setRequestFilter(tab)}
+                    className={`px-3 py-1 rounded-lg transition-all ${
+                      requestFilter === tab
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {filteredRequests.length === 0 ? (
+              <div className="py-6 text-center text-xs text-gray-500">
+                No service requests found for filter "{requestFilter}".
+              </div>
+            ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {activePendingReqs.map((req) => (
-                  <div key={req.id} className="p-4 rounded-xl border border-gray-800 bg-gray-900/60 space-y-3">
+                {filteredRequests.map((req) => (
+                  <div key={req.id} className="p-4 rounded-xl border border-gray-800 bg-gray-900/80 space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h4 className="text-sm font-bold text-white">{req.service_name}</h4>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-0.5">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-white">{req.service_name}</h4>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              req.status === 'APPROVED'
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : req.status === 'REJECTED'
+                                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                            }`}
+                          >
+                            {req.status === 'PENDING_ADMIN_APPROVAL' ? 'PENDING REVIEW' : req.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-1">
                           <User className="w-3 h-3 text-blue-400" />
-                          <span>Requested by: <strong className="text-gray-200">{req.pro_name}</strong></span>
+                          <span>Requested by: <strong className="text-gray-200">{req.pro_name || 'Professional'}</strong> ({req.pro_phone || 'N/A'})</span>
                         </div>
                       </div>
+
                       <div className="text-right">
-                        <span className="text-xs font-bold text-emerald-400">₹{parseFloat(req.suggested_price || 0).toFixed(2)}</span>
-                        <span className="block text-[10px] text-gray-500">Suggested Price</span>
+                        <span className="text-sm font-bold text-emerald-400">₹{parseFloat(req.suggested_price || 0).toFixed(2)}</span>
+                        <span className="block text-[10px] text-gray-500">Suggested Rate</span>
                       </div>
                     </div>
 
                     {req.description && (
-                      <p className="text-xs text-gray-400 bg-gray-950 p-2 rounded-lg border border-gray-800/60">
+                      <p className="text-xs text-gray-400 bg-gray-950 p-2.5 rounded-lg border border-gray-800/80">
                         {req.description}
                       </p>
                     )}
 
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <button
-                        disabled={actionLoading}
-                        onClick={() => handleRejectRequest(req.id, req.service_name)}
-                        className="px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-xs font-semibold flex items-center gap-1"
-                      >
-                        <X className="w-3.5 h-3.5" /> Reject
-                      </button>
-                      <button
-                        disabled={actionLoading}
-                        onClick={() => handleApproveRequest(req)}
-                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-lg shadow-emerald-500/20"
-                      >
-                        <Check className="w-3.5 h-3.5" /> Approve & Publish
-                      </button>
+                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-gray-800/60">
+                      {req.status !== 'REJECTED' && (
+                        <button
+                          disabled={actionLoading}
+                          onClick={() => handleRejectRequest(req.id, req.service_name)}
+                          className="px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-xs font-semibold flex items-center gap-1"
+                        >
+                          <X className="w-3.5 h-3.5" /> Reject Request
+                        </button>
+                      )}
+                      {req.status !== 'APPROVED' && (
+                        <button
+                          disabled={actionLoading}
+                          onClick={() => handleApproveRequest(req)}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-lg shadow-emerald-500/20"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Approve & Publish
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Search bar */}
           <div className="flex items-center gap-4 bg-gray-900/50 p-4 rounded-2xl border border-gray-800">
@@ -265,18 +310,18 @@ export default function ServicesCatalogPage() {
               <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
                 type="text"
-                placeholder="Search services by name or category..."
+                placeholder="Search active catalog services by name or category..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-gray-950 border border-gray-800 rounded-xl text-sm text-white focus:outline-none focus:border-blue-500"
               />
             </div>
             <div className="text-xs text-gray-400 px-2">
-              Total Services: <strong className="text-white">{filteredServices.length}</strong>
+              Active Catalog Services: <strong className="text-white">{filteredServices.length}</strong>
             </div>
           </div>
 
-          {/* Services Grid / Table */}
+          {/* Services Grid */}
           {loading ? (
             <div className="py-20 text-center text-gray-500 flex flex-col items-center gap-3">
               <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
