@@ -15,6 +15,17 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
     headers,
   });
 
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('lumo_admin_token');
+      localStorage.removeItem('lumo_admin_user');
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    throw new Error('Session expired. Please sign in again.');
+  }
+
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
     throw new Error(errorBody.message || `API Error ${res.status}: ${res.statusText}`);
