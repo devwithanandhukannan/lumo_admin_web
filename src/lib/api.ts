@@ -118,6 +118,27 @@ export async function deleteServiceCatalogItem(id: string) {
   });
 }
 
+export async function fetchPendingServiceRequests() {
+  try {
+    return await fetchApi<any[]>('/api/v1/catalog/service-requests');
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function approveCustomServiceRequest(id: string, categoryId?: string, basePrice?: number) {
+  return fetchApi(`/api/v1/catalog/service-requests/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ categoryId, basePrice }),
+  });
+}
+
+export async function rejectCustomServiceRequest(id: string) {
+  return fetchApi(`/api/v1/catalog/service-requests/${id}/reject`, {
+    method: 'POST',
+  });
+}
+
 // System Settings APIs
 export async function fetchSystemSettings(): Promise<SystemSetting[]> {
   try {

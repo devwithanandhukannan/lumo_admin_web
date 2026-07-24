@@ -14,12 +14,19 @@ import {
   AlertCircle,
   Tag,
   Search,
+  Sparkles,
+  Check,
+  X,
+  User,
 } from 'lucide-react';
 import {
   fetchServiceCatalog,
   fetchServiceCategories,
   createServiceCatalogItem,
   deleteServiceCatalogItem,
+  fetchPendingServiceRequests,
+  approveCustomServiceRequest,
+  rejectCustomServiceRequest,
 } from '@/lib/api';
 
 export default function ServicesCatalogPage() {
@@ -27,10 +34,12 @@ export default function ServicesCatalogPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [services, setServices] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Form State
@@ -43,17 +52,19 @@ export default function ServicesCatalogPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [svcData, catData] = await Promise.all([
+      const [svcData, catData, reqData] = await Promise.all([
         fetchServiceCatalog(),
         fetchServiceCategories(),
+        fetchPendingServiceRequests(),
       ]);
       setServices(svcData || []);
       setCategories(catData || []);
+      setPendingRequests(reqData || []);
       if (catData && catData.length > 0 && !categoryId) {
         setCategoryId(catData[0].id);
       }
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to load catalog' });
+      setMessage({ type: 'error', text: err.message || 'Failed to load catalog data' });
     } finally {
       setLoading(false);
     }
@@ -88,7 +99,7 @@ export default function ServicesCatalogPage() {
         description: description.trim(),
       });
 
-      setMessage({ type: 'success', text: `Service "${name}" added to catalog! Available immediately for professionals.` });
+      setMessage({ type: 'success', text: `Service "${name}" added to catalog! Listed for all professionals.` });
       setName('');
       setBasePrice('');
       setDescription('');
@@ -98,6 +109,33 @@ export default function ServicesCatalogPage() {
       setMessage({ type: 'error', text: err.message || 'Failed to create service' });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleApproveRequest = async (reqItem: any) => {
+    setActionLoading(true);
+    try {
+      const cat = categories[0]?.id || 'cat-clean';
+      await approveCustomServiceRequest(reqItem.id, cat, reqItem.suggested_price);
+      setMessage({ type: 'success', text: `Approved "${reqItem.service_name}" into active service catalog!` });
+      await loadData();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to approve request' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectRequest = async (id: string, serviceName: string) => {
+    setActionLoading(true);
+    try {
+      await rejectCustomServiceRequest(id);
+      setMessage({ type: 'success', text: `Request "${serviceName}" rejected.` });
+      await loadData();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to reject request' });
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -119,6 +157,8 @@ export default function ServicesCatalogPage() {
     s.name?.toLowerCase().includes(search.toLowerCase()) ||
     s.category_name?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const activePendingReqs = pendingRequests.filter((r) => r.status === 'PENDING_ADMIN_APPROVAL');
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
@@ -160,6 +200,62 @@ export default function ServicesCatalogPage() {
               {message.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
               <span className="flex-1">{message.text}</span>
               <button onClick={() => setMessage(null)} className="text-xs underline opacity-80 hover:opacity-100">Dismiss</button>
+            </div>
+          )}
+
+          {/* Professional Custom Service Requests Section */}
+          {activePendingReqs.length > 0 && (
+            <div className="p-5 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                  <Sparkles className="w-4 h-4 animate-pulse" />
+                  <span>Pending Custom Service Requests from Professionals ({activePendingReqs.length})</span>
+                </div>
+                <span className="text-xs text-amber-400/80">Approve to publish directly into service catalog</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activePendingReqs.map((req) => (
+                  <div key={req.id} className="p-4 rounded-xl border border-gray-800 bg-gray-900/60 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">{req.service_name}</h4>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-0.5">
+                          <User className="w-3 h-3 text-blue-400" />
+                          <span>Requested by: <strong className="text-gray-200">{req.pro_name}</strong></span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-bold text-emerald-400">₹{parseFloat(req.suggested_price || 0).toFixed(2)}</span>
+                        <span className="block text-[10px] text-gray-500">Suggested Price</span>
+                      </div>
+                    </div>
+
+                    {req.description && (
+                      <p className="text-xs text-gray-400 bg-gray-950 p-2 rounded-lg border border-gray-800/60">
+                        {req.description}
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        disabled={actionLoading}
+                        onClick={() => handleRejectRequest(req.id, req.service_name)}
+                        className="px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-xs font-semibold flex items-center gap-1"
+                      >
+                        <X className="w-3.5 h-3.5" /> Reject
+                      </button>
+                      <button
+                        disabled={actionLoading}
+                        onClick={() => handleApproveRequest(req)}
+                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-lg shadow-emerald-500/20"
+                      >
+                        <Check className="w-3.5 h-3.5" /> Approve & Publish
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
